@@ -51,61 +51,41 @@ fig.show() # show the figure before blitting
 frame = np.zeros(mlx_shape[0]*mlx_shape[1]) # 768 pts
 
 def detect_heat(shared_var):
-    #fig.canvas.restore_region(ax_background) # restore background
-    
     mlx.getFrame(frame) # read mlx90640
     
     data_array = np.fliplr(np.reshape(frame,mlx_shape)) # reshape, flip data
     
     #do the detection before the interpolation
-    mask = data_array[:,:] > threshhold #check if there are temprature readings of over 37
+    mask = data_array[:,:] > threshhold #check if there are readings of over the threshold
 
     
     coordinates = np.asarray(mask).nonzero() #get the coordinates where there is heat
     
-    ##data_array = ndimage.zoom(data_array,mlx_interp_val) # interpolate
-    #therm1.set_array(data_array) # set data
-    ##therm1.set_clim(vmin=np.min(data_array),vmax=np.max(data_array)) # set bounds
-    #therm1.set_clim(vmin=20,vmax=40) # set bounds
-    
     heatInImage = np.any(coordinates)
-    #print("Is there a person in the image: " + str(heatInImage))
     if heatInImage:
         shared_var.set() #signal the other thread that heat has been detected
         print('Heat detected')
-    #    center = np.mean(coordinates)
-    #    print(center)
-    #    squared_dist = (center[0] - 0)**2 + (center[1] - 0)**2
-    #    print(squared_dist)
     print_image(data_array)
 
-    #plt.pause(0.001)
-    #ax.draw_artist(therm1) # draw new thermal image
-    ##fig.canvas.blit(ax.bbox) # draw background
-    #fig.canvas.flush_events() # show the new image
-    #fig.show()
     return
     
+#print the image to the canvas
 def print_image(image):
     fig.canvas.restore_region(ax_background) # restore background
-    
     
     image = ndimage.zoom(image,mlx_interp_val) # interpolate
     therm1.set_array(image) # set data
     #therm1.set_clim(vmin=np.min(image),vmax=np.max(image)) # set bounds
     therm1.set_clim(vmin=20,vmax=40) # set bounds
     
-  
-    
     plt.pause(0.001)
     ax.draw_artist(therm1) # draw new thermal image
-    #fig.canvas.blit(ax.bbox) # draw background
     fig.canvas.flush_events() # show the new image
     fig.show()
     
-    
     return
 
+#Controller function for the image detection thread
 def image_detection(shared_var):
 	t_array = []
 	while True:
@@ -116,12 +96,6 @@ def image_detection(shared_var):
 			#print("The exception is:")
 			print(e)
 			continue
-		# approximating frame rate
-		#t_array.append(time.monotonic()-t1)
-		#if len(t_array)>10:
-	#		t_array = t_array[1:] # recent times for frame rate approx
-	#	print('Frame Rate: {0:2.1f}fps'.format(len(t_array)/np.sum(t_array)))
-
 
 #function to simulate the drone control software that blocks the main loop until the drone has arrived
 def moveTo(loc):
@@ -230,38 +204,33 @@ def nextLoc(location):
         
     return new_loc
 
-def keepTargetCentered():
-	print("try to keep the target centered")
-	return
-
-
+#Control function for the pathfinding thread
 def pathFinding(shared_var):
 	current_loc = [0,0]#init location
 	next_loc = nextLoc(current_loc)
 
 	while not shared_var.is_set():	
+		#pick one of the search patterns
 		next_loc = nextLoc(current_loc)
 		#next_loc = cone(current_loc, 1)
+		
 		moveTo(next_loc)
 		current_loc = next_loc
 	print('stopped searching')
 	print('The location of the victim is ' + str(current_loc))
-	#while True:
-#		keepTargetCentered()
 
-
-#synchronasation
+#Main function
 if __name__ == '__main__':
+	#start a seperate thread for the pathfinding so that this can be done in parrallel with the image detection
 	pathFindingThread = Thread(target=pathFinding, args=(shared_var, ))
-	#detectionThread = Thread(target=image_detection)
-	
-	#detectionThread.start()
-	
 	pathFindingThread.start()
 	
+	#initial image
 	data_array = np.fliplr(np.reshape(frame,mlx_shape))
 	print_image(data_array)
 	
+	#start image detection
 	image_detection(shared_var)
-	#pathFindingThread.join()
+	
+	#close the detection thread upon closing the program
 	detectionThread.join()
